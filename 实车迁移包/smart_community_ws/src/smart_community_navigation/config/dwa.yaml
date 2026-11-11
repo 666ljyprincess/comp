@@ -1,0 +1,8 @@
+# ROS 1 常称 DWA；ROS 2 Nav2 本工程使用 DWB Local Planner。
+DWB:
+  plugin: dwb_core::DWBLocalPlanner
+  max_vel_x: 0.32
+  max_vel_theta: 1.0
+  sim_time: 1.5
+  vx_samples: 20
+  vtheta_samples: 20

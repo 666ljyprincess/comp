@@ -1,0 +1,63 @@
+<?xml version="1.0"?>
+<!-- 实车 URDF：由仿真版复制而来，去掉全部 gazebo 标签（实车不需要）。
+     ★★★ 必改项（卷尺实测，单位米/弧度）★★★
+     base_link 原点 = 两驱动轮轴线中点、贴地高度。
+     1. laser_joint  origin xyz：激光雷达光学中心 相对 base_link 的 x(前+) y(左+) z(高)
+     2. laser_joint  rpy：雷达 0° 线与车头的夹角（雷达 0° 朝车头则 rpy 全 0）
+     3. camera_joint origin xyz/rpy：镜头光心位置与光轴偏角
+     4. wheel_radius / wheel_separation：换算里程计时用；OriginBot 里程计由
+        originbot_base 下发，这两个值仅作展示参考，不参与实车计算。
+     测量方法见 ../迁移指南.md 或 计划.md §2.2。 -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="smart_community_robot">
+  <xacro:property name="wheel_radius" value="0.0325"/>      <!-- TODO 实测轮半径，OriginBot 约 0.0325 -->
+  <xacro:property name="wheel_width" value="0.015"/>        <!-- TODO 实测轮胎宽 -->
+  <xacro:property name="wheel_separation" value="0.11"/>    <!-- TODO 实测两轮距，OriginBot 约 0.11 -->
+
+  <link name="base_link">
+    <inertial><origin xyz="0 0 0.02"/><mass value="0.5"/>
+      <inertia ixx="0.0005" ixy="0" ixz="0" iyy="0.0006" iyz="0" izz="0.0008"/></inertial>
+    <visual><origin xyz="0 0 0.03"/><geometry><box size="0.095 0.075 0.035"/></geometry>
+      <material name="body_blue"><color rgba="0.08 0.35 0.75 1"/></material></visual>
+    <collision><origin xyz="0 0 0.03"/><geometry><box size="0.095 0.075 0.035"/></geometry></collision>
+  </link>
+
+  <!-- 注意：轮子/万向轮只留 link，不发布多余 TF 也可以；保留是为了 RViz 显示完整 -->
+  <link name="left_wheel_link">
+    <visual><origin rpy="${pi/2} 0 0"/><geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry></visual>
+  </link>
+  <joint name="left_wheel_joint" type="continuous">
+    <parent link="base_link"/><child link="left_wheel_link"/>
+    <origin xyz="0 ${wheel_separation/2} ${wheel_radius}"/><axis xyz="0 1 0"/>
+  </joint>
+
+  <link name="right_wheel_link">
+    <visual><origin rpy="${pi/2} 0 0"/><geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry></visual>
+  </link>
+  <joint name="right_wheel_joint" type="continuous">
+    <parent link="base_link"/><child link="right_wheel_link"/>
+    <origin xyz="0 ${-wheel_separation/2} ${wheel_radius}"/><axis xyz="0 1 0"/>
+  </joint>
+
+  <link name="laser_link"/>
+  <!-- TODO 实测后修改（仿真值 0.0125 0 0.06，仅数量级参考） -->
+  <joint name="laser_joint" type="fixed">
+    <parent link="base_link"/><child link="laser_link"/>
+    <origin xyz="0.0125 0.0 0.06" rpy="0.0 0.0 0.0"/>
+  </joint>
+
+  <link name="camera_link"/>
+  <!-- TODO 实测后修改（仿真值 0.0475 0 0.055） -->
+  <joint name="camera_joint" type="fixed">
+    <parent link="base_link"/><child link="camera_link"/>
+    <origin xyz="0.0475 0.0 0.055" rpy="0.0 0.0 0.0"/>
+  </joint>
+
+  <link name="imu_link"/>
+  <!-- IMU 在底盘控制板上；实测芯片位置后修改 -->
+  <joint name="imu_joint" type="fixed">
+    <parent link="base_link"/><child link="imu_link"/>
+    <origin xyz="0.0 0.0 0.01" rpy="0.0 0.0 0.0"/>
+  </joint>
+
+  <!-- odom -> base_link 由 OriginBot 底盘节点(originbot_base)发布，URDF 里不要也不需要发布 -->
+</robot>

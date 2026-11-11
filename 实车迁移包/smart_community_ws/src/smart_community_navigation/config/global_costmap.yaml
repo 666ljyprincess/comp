@@ -1,0 +1,4 @@
+global_costmap:
+  global_frame: map
+  update_frequency: 3.0
+  plugins: [static_layer, obstacle_layer, inflation_layer]

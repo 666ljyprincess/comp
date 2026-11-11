@@ -1,0 +1,116 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="smart_community_robot">
+  <xacro:property name="wheel_radius" value="0.015"/>
+  <xacro:property name="wheel_width" value="0.00875"/>
+  <xacro:property name="wheel_separation" value="0.08"/>
+
+  <link name="base_link">
+    <inertial><origin xyz="0 0 0.02"/><mass value="0.25"/>
+      <inertia ixx="0.000125" ixy="0" ixz="0" iyy="0.000219" iyz="0" izz="0.000281"/></inertial>
+    <visual><origin xyz="0 0 0.03"/><geometry><box size="0.095 0.07 0.035"/></geometry>
+      <material name="body_blue"><color rgba="0.08 0.35 0.75 1"/></material></visual>
+    <collision><origin xyz="0 0 0.03"/><geometry><box size="0.095 0.07 0.035"/></geometry></collision>
+  </link>
+
+  <link name="left_wheel_link">
+    <inertial><mass value="0.019"/><inertia ixx="0.00000125" ixy="0" ixz="0" iyy="0.00000125" iyz="0" izz="0.00000125"/></inertial>
+    <visual><origin rpy="${pi/2} 0 0"/><geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry></visual>
+    <collision><origin rpy="${pi/2} 0 0"/><geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry></collision>
+  </link>
+  <joint name="left_wheel_joint" type="continuous">
+    <parent link="base_link"/><child link="left_wheel_link"/>
+    <origin xyz="0 ${wheel_separation/2} ${wheel_radius}"/><axis xyz="0 1 0"/>
+  </joint>
+
+  <link name="right_wheel_link">
+    <inertial><mass value="0.019"/><inertia ixx="0.00000125" ixy="0" ixz="0" iyy="0.00000125" iyz="0" izz="0.00000125"/></inertial>
+    <visual><origin rpy="${pi/2} 0 0"/><geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry></visual>
+    <collision><origin rpy="${pi/2} 0 0"/><geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry></collision>
+  </link>
+  <joint name="right_wheel_joint" type="continuous">
+    <parent link="base_link"/><child link="right_wheel_link"/>
+    <origin xyz="0 ${-wheel_separation/2} ${wheel_radius}"/><axis xyz="0 1 0"/>
+  </joint>
+
+  <link name="caster_front_link">
+    <inertial><mass value="0.004"/><inertia ixx="0.0000003" ixy="0" ixz="0" iyy="0.0000003" iyz="0" izz="0.0000003"/></inertial>
+    <visual><geometry><sphere radius="0.00875"/></geometry></visual>
+    <collision><geometry><sphere radius="0.00875"/></geometry></collision>
+  </link>
+  <joint name="caster_front_joint" type="fixed"><parent link="base_link"/><child link="caster_front_link"/><origin xyz="0.035 0 0.00875"/></joint>
+
+  <link name="caster_rear_link">
+    <inertial><mass value="0.004"/><inertia ixx="0.0000003" ixy="0" ixz="0" iyy="0.0000003" iyz="0" izz="0.0000003"/></inertial>
+    <visual><geometry><sphere radius="0.00875"/></geometry></visual>
+    <collision><geometry><sphere radius="0.00875"/></geometry></collision>
+  </link>
+  <joint name="caster_rear_joint" type="fixed"><parent link="base_link"/><child link="caster_rear_link"/><origin xyz="-0.035 0 0.00875"/></joint>
+
+  <link name="laser_link">
+    <visual><geometry><cylinder radius="0.01125" length="0.00875"/></geometry></visual>
+  </link>
+  <joint name="laser_joint" type="fixed"><parent link="base_link"/><child link="laser_link"/><origin xyz="0.0125 0 0.06"/></joint>
+
+  <link name="camera_link">
+    <visual><geometry><box size="0.0125 0.0175 0.0125"/></geometry></visual>
+  </link>
+  <joint name="camera_joint" type="fixed"><parent link="base_link"/><child link="camera_link"/><origin xyz="0.0475 0 0.055" rpy="0 0 0"/></joint>
+
+  <gazebo reference="base_link"><material>Gazebo/Blue</material></gazebo>
+  <gazebo reference="left_wheel_link"><material>Gazebo/Black</material><mu1>1.0</mu1><mu2>1.0</mu2></gazebo>
+  <gazebo reference="right_wheel_link"><material>Gazebo/Black</material><mu1>1.0</mu1><mu2>1.0</mu2></gazebo>
+  <gazebo reference="caster_front_link"><material>Gazebo/Black</material><mu1>0.1</mu1><mu2>0.1</mu2></gazebo>
+  <gazebo reference="caster_rear_link"><material>Gazebo/Black</material><mu1>0.1</mu1><mu2>0.1</mu2></gazebo>
+
+  <gazebo>
+    <plugin name="smart_diff_drive" filename="libgazebo_ros_diff_drive.so">
+      <ros><namespace>/</namespace></ros>
+      <update_rate>50</update_rate>
+      <left_joint>left_wheel_joint</left_joint>
+      <right_joint>right_wheel_joint</right_joint>
+      <wheel_separation>${wheel_separation}</wheel_separation>
+      <wheel_diameter>${2*wheel_radius}</wheel_diameter>
+      <max_wheel_torque>5.0</max_wheel_torque>
+      <max_wheel_acceleration>10.0</max_wheel_acceleration>
+      <command_topic>cmd_vel</command_topic>
+      <odometry_topic>odom</odometry_topic>
+      <odometry_frame>odom</odometry_frame>
+      <robot_base_frame>base_link</robot_base_frame>
+      <publish_odom>true</publish_odom>
+      <publish_odom_tf>true</publish_odom_tf>
+      <publish_wheel_tf>true</publish_wheel_tf>
+    </plugin>
+  </gazebo>
+
+  <gazebo reference="laser_link">
+    <sensor name="lidar" type="ray">
+      <always_on>true</always_on><visualize>true</visualize><update_rate>10</update_rate>
+      <ray>
+        <scan><horizontal><samples>360</samples><resolution>1</resolution>
+          <min_angle>-${pi}</min_angle><max_angle>${pi}</max_angle></horizontal></scan>
+        <range><min>0.10</min><max>1.5</max><resolution>0.01</resolution></range>
+      </ray>
+      <plugin name="gazebo_ros_laser" filename="libgazebo_ros_ray_sensor.so">
+        <ros><namespace>/</namespace><remapping>~/out:=scan</remapping></ros>
+        <output_type>sensor_msgs/LaserScan</output_type>
+        <frame_name>laser_link</frame_name>
+      </plugin>
+    </sensor>
+  </gazebo>
+
+  <gazebo reference="camera_link">
+    <sensor name="front_camera" type="camera">
+      <always_on>true</always_on><update_rate>15</update_rate><visualize>true</visualize>
+      <camera name="front_camera">
+        <horizontal_fov>1.40</horizontal_fov>
+        <image><width>640</width><height>480</height><format>R8G8B8</format></image>
+        <clip><near>0.05</near><far>20</far></clip>
+      </camera>
+      <plugin name="gazebo_ros_camera" filename="libgazebo_ros_camera.so">
+        <ros><namespace>/</namespace></ros>
+        <camera_name>camera</camera_name>
+        <frame_name>camera_link</frame_name>
+      </plugin>
+    </sensor>
+  </gazebo>
+</robot>

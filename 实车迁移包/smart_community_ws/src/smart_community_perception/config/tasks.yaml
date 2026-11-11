@@ -1,0 +1,32 @@
+default_task: traffic_light
+tasks:
+  traffic_light:
+    detector: traffic_light
+    class: TrafficLightDetector
+  people:
+    detector: people
+    class: PeopleDetector
+  sign:
+    detector: sign
+    class: SignDetector
+  trash_bin:
+    detector: trash_bin
+    class: TrashBinDetector
+  fire:
+    detector: fire
+    class: FireDetector
+  license_plate:
+    detector: plate
+    class: PlateDetector
+  electric_bike:
+    detector: electric_bike
+    class: ElectricBikeDetector
+  meter:
+    detector: meter
+    class: MeterDetector
+  temperature:
+    detector: temperature
+    class: TemperatureDetector
+  vehicle:
+    detector: vehicle
+    class: VehicleDetector

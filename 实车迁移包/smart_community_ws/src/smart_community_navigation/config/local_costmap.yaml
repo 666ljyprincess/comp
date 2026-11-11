@@ -1,0 +1,6 @@
+local_costmap:
+  global_frame: odom
+  rolling_window: true
+  width: 3
+  height: 3
+  update_frequency: 8.0

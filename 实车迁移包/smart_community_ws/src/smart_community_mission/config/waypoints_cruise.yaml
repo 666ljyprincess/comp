@@ -1,0 +1,38 @@
+# ===== 纯巡航版航点（实车迁移阶段一用）=====
+# 由 waypoints.yaml 自动生成：所有 task 改为 turn，到点只停 dwell 秒即走，不做任何识别。
+# ★ 坐标是仿真地图的，实车地图建好后必须全部重标（方法见 迁移指南.md §6）
+# ★ 转角 turn 点保留；调丝滑时可在急弯处增加更多 turn 辅助点
+#
+frame_id: map
+
+waypoints:
+  # 红绿灯1
+  - {name: light_1, task: turn, x: 0.407, y: 1.656, yaw: -3.13182, dwell: 2.0}
+
+  # A区：3个观察点
+  - {name: people_A_1, task: turn, zone: A, x: -0.645, y: 1.659, yaw: -1.73502, dwell: 2.0}
+  - {name: turn_1, task: turn, x: -1.476, y: 1.554, yaw: -1.59536, dwell: 0.5}
+  - {name: people_A_2, task: turn, zone: A, x: -1.529, y: 1.054, yaw: -0.03042, dwell: 2.0}
+  - {name: turn_2, task: turn, x: -1.551, y: 0.451, yaw: -0.08027, dwell: 0.5}
+  - {name: people_A_3, task: turn, zone: A, x: -0.786, y: 0.516, yaw: 1.58088, dwell: 2.0}
+
+  # B区：2个观察点
+  - {name: people_B_1, task: turn, zone: B, x: -0.783, y: 0.469, yaw: -1.57441, dwell: 2.0}
+  - {name: turn_3, task: turn, x: 0.004, y: 0.524, yaw: -1.61886, dwell: 0.5}
+  - {name: people_B_2, task: turn, zone: B, x: -0.066, y: -0.008, yaw: 3.06485, dwell: 2.0}
+
+  # 红绿灯2
+  - {name: light_2, task: turn, x: -0.052, y: -0.119, yaw: -1.62576, dwell: 2.0}
+  - {name: turn_4, task: turn, x: -0.152, y: -1.480, yaw: 0.10983, dwell: 0.5}
+
+  # 车牌识别
+  - {name: car_1, task: turn, lot: 1, x: 1.056, y: -1.457, yaw: 0.04661, dwell: 3.0}
+  - {name: car_2, task: turn, lot: 2, x: 1.071, y: -0.923, yaw: 0.10756, dwell: 3.0}
+  - {name: car_3, task: turn, lot: 3, x: 0.957, y: -0.362, yaw: 0.14300, dwell: 3.0}
+
+  - {name: turn_5, task: turn, x: 1.032, y: 1.287, yaw: 1.54608, dwell: 0.5}
+
+  
+
+  # 最终停车
+  - {name: parking, task: turn, x: 1.505, y: 1.582, yaw: -3.09006, dwell: 2.0}
