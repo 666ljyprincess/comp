@@ -60,6 +60,7 @@ def assign_splits(batches, ratios=(0.7, 0.2, 0.1), seed=0):
     """批次分层：整批归属 train/val/test 某一侧，永不跨侧。
 
     batches: [(批次名, 张数), ...]；按 seed 洗牌后依 train→val→test 贪心装填配额。
+    批次 ≥3 时保证每侧至少一批（贪心可能饿死 val/test，从 train 尾部匀出修复）。
     """
     order = list(batches)
     random.Random(seed).shuffle(order)
@@ -76,6 +77,11 @@ def assign_splits(batches, ratios=(0.7, 0.2, 0.1), seed=0):
         side = side_order[idx]
         splits[side].append(name)
         filled[side] += cnt
+    # 饥饿修复：整批贪心会让 test/val 恒空（如 3–9/11–13/16 个等量批次），
+    # 批次 ≥3 时从 train 尾部各匀一批给空侧，保证三侧非空
+    for side in ('val', 'test'):
+        if not splits[side] and len(order) >= 3 and splits['train']:
+            splits[side].append(splits['train'].pop())
     return splits
 
 
@@ -103,11 +109,14 @@ def do_split(src_root, ds_type, classes, ratios=(0.7, 0.2, 0.1), seed=0, out_roo
     """按批次分层复制到 <type>_dataset/{images,labels}/{train,val,test} + data.yaml。
 
     源批次目录只读（copy2 永不动母本）；无同名 txt 的图按背景样本复制（只复制图）。
-    返回 {side: 张数}；任一侧 0 张 raise ValueError（防 GPU 排队后才报错）。
+    输出目录整目录重建——迭代加批次后重跑时旧残留会让同图跨侧（mAP 虚高）。
+    返回 {side: 张数}；任一侧 0 张或全程 0 个标注 raise ValueError（防 GPU 白跑）。
     """
     src_root = Path(os.path.expanduser(src_root))
     out_root = Path(os.path.expanduser(out_root)) if out_root else src_root
     dataset_dir = out_root / f'{ds_type}_dataset'
+    if dataset_dir.exists():
+        shutil.rmtree(dataset_dir)   # 全量重建：data.yaml 也会重生成
     batches = []
     for d in sorted(src_root.iterdir()):
         if not d.is_dir() or not d.name.startswith(f'{ds_type}_'):
@@ -121,6 +130,7 @@ def do_split(src_root, ds_type, classes, ratios=(0.7, 0.2, 0.1), seed=0, out_roo
         raise ValueError(f'{src_root} 下没有 {ds_type}_* 批次目录（含 jpg）')
     splits = assign_splits(batches, ratios, seed)
     counts = {'train': 0, 'val': 0, 'test': 0}
+    n_txt = 0
     for side, names in splits.items():
         (dataset_dir / 'images' / side).mkdir(parents=True, exist_ok=True)
         (dataset_dir / 'labels' / side).mkdir(parents=True, exist_ok=True)
@@ -130,12 +140,18 @@ def do_split(src_root, ds_type, classes, ratios=(0.7, 0.2, 0.1), seed=0, out_roo
                 txt = img.with_suffix('.txt')
                 if txt.is_file():
                     shutil.copy2(txt, dataset_dir / 'labels' / side / txt.name)
+                    n_txt += 1
                 counts[side] += 1
     empty = [s for s, c in counts.items() if c == 0]
     if empty:
         raise ValueError(
             f'划分后有侧为 0 张（train={counts["train"]}, val={counts["val"]}, '
             f'test={counts["test"]}）——批次太少无法分层，再多采 1–2 个批次目录后重试')
+    if n_txt == 0:
+        raise ValueError(
+            f'{src_root} 的批次里没有任何 .txt 标注——先跑 label 预标注'
+            f'（python3 dataset_pipeline.py label --type {ds_type} --model <上一版.pt>）'
+            f'或手工标注，再 split/run')
     write_data_yaml(dataset_dir, classes)
     return counts
 

@@ -120,3 +120,47 @@ def test_weights_dest_path():
     from dataset_pipeline import weights_dest
     assert weights_dest('people') == os.path.expanduser('~/weights/people_best.pt')
     assert weights_dest('trash', weights_root=str(Path('/tmp/w'))) == '/tmp/w/trash_best.pt'
+
+
+# ---------------- 终审修复：重跑泄漏 / 批次饥饿 / 零标注守卫 ----------------
+from collections import Counter
+
+from dataset_pipeline import assign_splits as _assign
+
+
+def test_do_split_rerun_with_new_batches_no_leakage(tmp_path):
+    """复审 Critical#1：加批次后重跑 split，旧残留不得让同图跨侧。"""
+    src, out = tmp_path / 'src', tmp_path / 'out'
+    src.mkdir()
+    for i in range(10):
+        _make_batch(src, f'people_b{i}', 3, labeled_stems=(f'people_b{i}_00000',))
+    do_split(str(src), 'people', ['resident', 'outsider'], seed=0, out_root=str(out))
+    for i in range(10, 14):                       # 迭代：新采 4 个批次
+        _make_batch(src, f'people_b{i}', 3)
+    counts = do_split(str(src), 'people', ['resident', 'outsider'],
+                      seed=0, out_root=str(out))
+    assert sum(counts.values()) == 42             # 14 批 × 3
+    names = [p.name for side in ('train', 'val', 'test')
+             for p in (out / 'people_dataset' / 'images' / side).glob('*.jpg')]
+    dupes = [n for n, c in Counter(names).items() if c > 1]
+    assert not dupes, f'同图跨侧泄漏: {dupes}'
+
+
+def test_assign_splits_guarantees_every_side_nonempty_with_3plus_batches():
+    """复审 Important#2：等量批次 3/12 个时贪心会饿死 test/val，必须修复。"""
+    for k in (3, 12):
+        batches = [(f'b{i:02d}', 50) for i in range(k)]
+        a = _assign(batches, seed=0)
+        placed = sorted(x for side in a.values() for x in side)
+        assert placed == sorted(n for n, _ in batches)   # 恰好一次不丢
+        assert all(a[s] for s in ('train', 'val', 'test')), f'{k} 批次有侧为空: {a}'
+
+
+def test_do_split_zero_labels_raises(tmp_path):
+    """复审 Important#3：一张 txt 都没有（全背景）必须在 split 就报，不许开训。"""
+    src, out = tmp_path / 'src', tmp_path / 'out'
+    src.mkdir()
+    for i in range(6):                             # ≥3 批，侧不空
+        _make_batch(src, f'people_b{i}', 3)
+    with pytest.raises(ValueError, match='label'):
+        do_split(str(src), 'people', ['resident', 'outsider'], out_root=str(out))
