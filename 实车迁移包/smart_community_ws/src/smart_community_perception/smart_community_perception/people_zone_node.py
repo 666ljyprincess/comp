@@ -31,6 +31,8 @@ class PeopleZoneNode(Node):
         self.declare_parameter('min_frames_per_person', 2)
         self.declare_parameter('image_width', 640)
         self.declare_parameter('image_height', 480)
+        # 汇总播报统一由 mission_manager 发布时置 False，避免双重语音
+        self.declare_parameter('announce', True)
         with open(self.get_parameter('landmarks_yaml').value, encoding='utf-8') as f:
             landmarks = yaml.safe_load(f)['landmarks']
         with open(self.get_parameter('waypoints_yaml').value, encoding='utf-8') as f:
@@ -66,6 +68,10 @@ class PeopleZoneNode(Node):
         except (ValueError, TypeError):
             return
         if payload.get('status') != 'OK':
+            return
+        # 与 mission_manager 相同的防串视角守卫：拒收上一视角的排队旧帧
+        waypoint = payload.get('waypoint')
+        if waypoint and waypoint != self.task_name:
             return
         boxes = [(b.x1, b.y1, b.x2, b.y2, b.label, b.score) for b in msg.boxes]
         if not boxes:
@@ -103,9 +109,10 @@ class PeopleZoneNode(Node):
                         f'{uncertain}。')
         else:
             sentence = f'{zone}区未获得可靠的人偶识别结果，无法确认人数，请检查模型和摄像头。'
-        m = String()
-        m.data = sentence
-        self.speech_pub.publish(m)
+        if self.get_parameter('announce').value:
+            m = String()
+            m.data = sentence
+            self.speech_pub.publish(m)
         self.get_logger().info(f'人偶区域报告：{sentence}；数据={text_msg.data}')
         self.fusion.reset(zone)
 

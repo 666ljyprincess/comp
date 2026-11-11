@@ -7,16 +7,19 @@
       ros2 launch smart_community_bringup competition_real.launch.py
   ③ 纯巡航丝滑测试（无识别任务！所有点位只停不走任务）：
       ros2 launch smart_community_bringup competition_real.launch.py start_mission:=true waypoints:=<巡航yaml绝对路径>
-  ④ 全任务（识别开启，weights 指向实车训练模型）：
+  ④ 全任务（识别开启，weights 指向实车训练模型；hfov/地标用实测值）：
       ros2 launch smart_community_bringup competition_real.launch.py start_mission:=true \
-          use_perception:=true people_weights:=/userdata/smart_community_ws/weights/people_best.pt
+          use_perception:=true people_weights:=/userdata/smart_community_ws/weights/people_best.pt \
+          people_hfov:=<§2.3实测弧度> people_landmarks:=<§5.3重测yaml绝对路径>
 
 关键差异（相对仿真 competition.launch.py）：
   - 无 gazebo；改为 real_drivers.launch.py（底盘/雷达/相机实车驱动，需按实物改）
   - use_sim_time 全部 false
   - 导航默认不开 keepout（纯巡航阶段；跑顺后 use_keepout:=true 并重画实车禁行 mask）
   - waypoints 作为参数传入，默认巡航版（全部 task: turn，无识别依赖）
-  - 感知默认不启动（阶段④才开）
+  - 感知默认不启动（阶段④才开；含人偶跨视角去重融合 people_zone_node——
+    mission_manager 区域汇总自动优先其融合结果，节点不在/地标未重测/无匹配时
+    1.5s 后回退为视角计数求和，行为与不装相同）
 """
 import os
 from ament_index_python.packages import get_package_share_directory
@@ -26,6 +29,7 @@ from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 PERCEPTION_TASKS = ["traffic_light", "people", "license_plate"]
 
@@ -75,6 +79,18 @@ def generate_launch_description():
         DeclareLaunchArgument('use_keepout', default_value='false'),
         DeclareLaunchArgument('navigation_mode', default_value='continuous'),
         DeclareLaunchArgument('image_topic', default_value='/image_raw'),
+        DeclareLaunchArgument('people_hfov', default_value='1.40',
+                              description='相机水平 FOV 弧度；1.40 是 Gazebo 仿真值，实车按 计划.md §2.3 实测后覆盖'),
+        DeclareLaunchArgument('image_width', default_value='1280',
+                              description='相机实际输出分辨率宽（人偶投影参照系，须与检测框像素坐标一致）'),
+        DeclareLaunchArgument('image_height', default_value='720',
+                              description='相机实际输出分辨率高'),
+        DeclareLaunchArgument(
+            'people_landmarks',
+            default_value=os.path.join(
+                get_package_share_directory('smart_community_perception'),
+                'config', 'people_landmarks.yaml'),
+            description='人偶地标 yaml；默认是仿真坐标，实车重测后换绝对路径（计划.md §5.3）'),
         DeclareLaunchArgument(
             'waypoints',
             default_value=os.path.join(get_package_share_directory('smart_community_mission'),
@@ -109,6 +125,21 @@ def generate_launch_description():
             Node(package='smart_community_perception', executable='perception_node',
                  output='screen', parameters=params,
                  condition=IfCondition(use_perception))]))
+
+    # 人偶跨视角去重融合（阶段④与感知一起开；汇总播报统一归 mission_manager，
+    # 故 announce=False；区域汇总优先融合结果，无匹配/无响应自动回退视角求和）
+    actions.append(TimerAction(period=6.5, actions=[
+        Node(package='smart_community_perception', executable='people_zone_node',
+             output='screen',
+             condition=IfCondition(use_perception),
+             parameters=[{
+                 'use_sim_time': False,
+                 'announce': False,
+                 'hfov': ParameterValue(LaunchConfiguration('people_hfov'), value_type=float),
+                 'image_width': ParameterValue(LaunchConfiguration('image_width'), value_type=int),
+                 'image_height': ParameterValue(LaunchConfiguration('image_height'), value_type=int),
+                 'landmarks_yaml': LaunchConfiguration('people_landmarks'),
+             }])]))
 
     actions.append(OpaqueFunction(function=launch_mission))
     return LaunchDescription(actions)

@@ -119,6 +119,13 @@ class MissionManager(Node):
         self.active_task_pub = self.create_publisher(String, '/mission/active_task', 10)
         self.result_pub = self.create_publisher(String, '/mission/task_result', 10)
         self.announce_pub = self.create_publisher(String, '/announce', 10)
+        # 跨视角人偶去重：区域最后一个视角完成时触发 people_zone_node，
+        # 1.5s 内收到融合报告则用去重计数，否则回退视角求和（行为与旧版一致）。
+        self.zone_done_pub = self.create_publisher(String, '/mission/people_zone_done', 10)
+        self.create_subscription(String, '/mission/people_zone_report',
+                                 self._on_zone_report, 10)
+        self._pending_zone = None
+        self._zone_report_timer = None
         self._active_task = 'none'
         for t in PERCEPTION_TASKS:
             self.create_subscription(PerceptionResult, f'/perception/{t}',
@@ -379,13 +386,73 @@ class MissionManager(Node):
                 return False
             residents, outsiders = zone_totals(
                 [self.zone_results[zone][name] for name in view_names])
-            sentence = (f'{zone}区{len(view_names)}个视角识别完成，'
+            self._request_zone_summary(zone, len(view_names), residents, outsiders)
+        return True
+
+    def _request_zone_summary(self, zone, views, residents, outsiders):
+        if self._pending_zone is not None:
+            # 防御：上一区域的汇总还没落地（理论上不会发生），先按回退值收尾。
+            self._finalize_zone_summary()
+        self._pending_zone = {'zone': zone, 'views': views,
+                              'residents': residents, 'outsiders': outsiders}
+        self._publish(self.zone_done_pub, zone)
+        # 单次定时器：people_zone_node 无响应时按视角求和回退收尾。
+        if self._zone_report_timer is not None:
+            self._zone_report_timer.cancel()
+        self._zone_report_timer = self.create_timer(1.5, self._finalize_zone_summary)
+
+    def _on_zone_report(self, msg):
+        if self._pending_zone is None:
+            return
+        try:
+            report = json.loads(msg.data)
+            zone = str(report.get('zone', '')).upper()
+            residents = int(report.get('resident', 0))
+            outsiders = int(report.get('outsider', 0))
+            uncertain = int(report.get('uncertain', 0))
+            matched = int(report.get('matched_observations', 0))
+        except (ValueError, TypeError):
+            return
+        if zone != self._pending_zone['zone'] or min(residents, outsiders, uncertain) < 0:
+            return
+        # 质量闸门：融合一帧都没匹配上地标（地标未重测/全不匹配）时视为无报告，
+        # 按回退逻辑走，避免拿错误去重总数当权威结果播报。
+        if matched < 1:
+            self.get_logger().warn(
+                f'融合报告无任何地标匹配（matched=0，unmatched='
+                f'{report.get("unmatched_detections", "?")}），忽略，回退视角求和')
+            return
+        self._pending_zone['fusion'] = (residents, outsiders, uncertain)
+        self._finalize_zone_summary()
+
+    def _finalize_zone_summary(self):
+        if self._pending_zone is None:
+            return
+        if self._zone_report_timer is not None:
+            self._zone_report_timer.cancel()
+            self._zone_report_timer = None
+        pending, self._pending_zone = self._pending_zone, None
+        zone, views = pending['zone'], pending['views']
+        fusion = pending.get('fusion')
+        if fusion is not None:
+            residents, outsiders, uncertain = fusion
+            note = f'，另有{uncertain}名类别待核' if uncertain else ''
+            sentence = (f'{zone}区{views}个视角识别完成（跨视角去重），'
+                        f'共计{residents+outsiders}个人偶，'
+                        f'居民{residents}个，外来人员{outsiders}个{note}。')
+            self._publish(self.result_pub, sentence)
+            self._publish(self.announce_pub, sentence)
+            self.get_logger().info('人偶区域汇总（地标融合去重）：' + sentence)
+        else:
+            residents, outsiders = pending['residents'], pending['outsiders']
+            sentence = (f'{zone}区{views}个视角识别完成，'
                         f'共计{residents+outsiders}个人偶，'
                         f'居民{residents}个，非社区人员{outsiders}个。')
             self._publish(self.result_pub, sentence)
             self._publish(self.announce_pub, sentence)
-            self.get_logger().info('人偶区域汇总（视角计数求和，未跨视角去重）：' + sentence)
-        return True
+            self.get_logger().warn(
+                'people_zone_node 未回传融合报告（未启动/未匹配地标），'
+                '回退为视角计数求和（未跨视角去重，可能重复计数）：' + sentence)
 
     def _recognition_failed(self):
         wp = self.current

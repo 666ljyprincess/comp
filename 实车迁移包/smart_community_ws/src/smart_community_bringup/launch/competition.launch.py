@@ -65,7 +65,8 @@ def generate_launch_description():
                  output='screen', parameters=params)]))
 
     # Person viewpoint and zone sums are now handled by mission_manager.
-    # Do not launch the old fusion reporter or it would duplicate announcements.
+    # 实车 launch 会启动 people_zone_node 做跨视角去重，mission_manager 会优先
+    # 其融合报告（announce=False 防重复播报）；仿真保持原行为（视角求和）不变。
     actions.append(TimerAction(period=4.0, actions=[
         Node(package='smart_community_perception', executable='announce_node', output='screen')]))
     actions.append(TimerAction(period=5.0, actions=[
