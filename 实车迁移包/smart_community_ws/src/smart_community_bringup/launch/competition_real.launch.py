@@ -1,7 +1,8 @@
 """实车一键启动（比赛用 / 分阶段调试用）。
 
 分阶段调试用法（推荐按此顺序调通）：
-  ① 只起驱动 + URDF 看话题/TF：
+  ① 车端先起 ROS1 驱动（计划.md §1.5）+ PC 起桥（§1.4），本 launch 只起 TF/导航/任务；
+      起来后先看桥来话题/TF：
       ros2 launch smart_community_bringup competition_real.launch.py use_navigation:=false
   ② 加导航遥控验证（RViz 里 2D Goal Pose 试走）：
       ros2 launch smart_community_bringup competition_real.launch.py
@@ -13,7 +14,8 @@
           people_hfov:=<§2.3实测弧度> people_landmarks:=<§5.3重测yaml绝对路径>
 
 关键差异（相对仿真 competition.launch.py）：
-  - 无 gazebo；改为 real_drivers.launch.py（底盘/雷达/相机实车驱动，需按实物改）
+  - 无 gazebo；无实车驱动（车端 ROS1 自起，经桥转发，计划.md 方案 A）
+  - TF 全 PC 自建：URDF 静态 TF + odom_tf_broadcaster（桥来 /odom → odom→base_link）
   - use_sim_time 全部 false
   - 导航默认不开 keepout（纯巡航阶段；跑顺后 use_keepout:=true 并重画实车禁行 mask）
   - waypoints 作为参数传入，默认巡航版（全部 task: turn，无识别依赖）
@@ -42,8 +44,6 @@ def generate_launch_description():
     people_weights = LaunchConfiguration('people_weights')
     use_keepout = LaunchConfiguration('use_keepout')
 
-    bringup_share = get_package_share_directory('smart_community_bringup')
-    drivers = os.path.join(bringup_share, 'launch', 'real_drivers.launch.py')
     desc = os.path.join(get_package_share_directory('smart_community_description'),
                         'launch', 'description.launch.py')
     nav = os.path.join(get_package_share_directory('smart_community_navigation'),
@@ -97,10 +97,11 @@ def generate_launch_description():
                                        'config', 'waypoints_cruise.yaml'),
             description='巡航/任务航点 yaml 绝对路径；巡航版=全部 turn，任务版=识别任务点'),
         DeclareLaunchArgument('map', default_value='/userdata/maps/community_real.yaml'),
-        # 1. 实车驱动（底盘/雷达/相机 —— 按 real_drivers.launch.py 里的 TODO 改好）
-        IncludeLaunchDescription(PythonLaunchDescriptionSource(drivers)),
-        # 2. 实车 URDF TF
+        # 1. 实车 URDF 静态 TF（base_link→雷达/相机）
         IncludeLaunchDescription(PythonLaunchDescriptionSource(desc)),
+        # 2. odom→base_link TF（桥来 /odom，替代车端 TF；车端驱动按计划.md §1.5 自起）
+        Node(package='smart_community_bringup', executable='odom_tf_broadcaster',
+             output='screen', parameters=[{'use_sim_time': False}]),
         # 3. SLAM（建图时才开）
         TimerAction(period=2.0, actions=[
             IncludeLaunchDescription(PythonLaunchDescriptionSource(slam),
