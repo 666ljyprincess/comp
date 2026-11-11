@@ -22,11 +22,26 @@
 权重落位 ~/weights/<类型>_best.pt。trash/fire 等非预设类型首跑加 --classes a,b,c。
 """
 import argparse
+import os
 import random
+import shutil
 import sys
+from pathlib import Path
 
 # 类名预设（people 与检测器强制集合一致：people.py 校验 resident/outsider）
 DATASET_CLASSES = {'people': ['resident', 'outsider']}
+
+# 在线增强参数集（ultralytics 训练时实时变换）：禁翻转——车牌/指示牌含文字，镜像不可读
+AUGMENT_PARAMS = {
+    'hsv_v': 0.25,      # 亮度 ±25%
+    'hsv_s': 0.2,       # 饱和度 ±20%
+    'degrees': 5.0,     # 旋转 ±5°
+    'translate': 0.1,
+    'scale': 0.2,
+    'mosaic': 1.0,
+    'fliplr': 0.0,
+    'flipud': 0.0,
+}
 
 
 def resolve_classes(ds_type, classes_arg):
@@ -68,6 +83,70 @@ def boxes_to_yolo_lines(boxes):
     """(cls, xc, yc, w, h) 归一化坐标列表 → YOLO txt 内容（每行 6 位小数）。"""
     return ''.join(
         f'{int(c)} {x:.6f} {y:.6f} {w:.6f} {h:.6f}\n' for c, x, y, w, h in boxes)
+
+
+def write_data_yaml(dataset_dir, classes):
+    """写标准 YOLO data.yaml（train/val/test 绝对路径 + nc + names），返回其路径。"""
+    dataset_dir = Path(dataset_dir)
+    lines = ['# 由 dataset_pipeline 生成；类名顺序定死后不要再改']
+    for side in ('train', 'val', 'test'):
+        lines.append(f'{side}: {dataset_dir / "images" / side}')
+    lines.append(f'nc: {len(classes)}')
+    names = ', '.join(repr(c) for c in classes)
+    lines.append(f'names: [{names}]')
+    path = dataset_dir / 'data.yaml'
+    path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+    return str(path)
+
+
+def do_split(src_root, ds_type, classes, ratios=(0.7, 0.2, 0.1), seed=0, out_root=None):
+    """按批次分层复制到 <type>_dataset/{images,labels}/{train,val,test} + data.yaml。
+
+    源批次目录只读（copy2 永不动母本）；无同名 txt 的图按背景样本复制（只复制图）。
+    返回 {side: 张数}；任一侧 0 张 raise ValueError（防 GPU 排队后才报错）。
+    """
+    src_root = Path(os.path.expanduser(src_root))
+    out_root = Path(os.path.expanduser(out_root)) if out_root else src_root
+    dataset_dir = out_root / f'{ds_type}_dataset'
+    batches = []
+    for d in sorted(src_root.iterdir()):
+        if not d.is_dir() or not d.name.startswith(f'{ds_type}_'):
+            continue
+        if d.name == f'{ds_type}_dataset' or d.resolve() == dataset_dir.resolve():
+            continue  # 输出目录自身不算批次
+        n = len(list(d.glob('*.jpg')))
+        if n:
+            batches.append((d.name, n))
+    if not batches:
+        raise ValueError(f'{src_root} 下没有 {ds_type}_* 批次目录（含 jpg）')
+    splits = assign_splits(batches, ratios, seed)
+    counts = {'train': 0, 'val': 0, 'test': 0}
+    for side, names in splits.items():
+        (dataset_dir / 'images' / side).mkdir(parents=True, exist_ok=True)
+        (dataset_dir / 'labels' / side).mkdir(parents=True, exist_ok=True)
+        for name in names:
+            for img in (src_root / name).glob('*.jpg'):
+                shutil.copy2(img, dataset_dir / 'images' / side / img.name)
+                txt = img.with_suffix('.txt')
+                if txt.is_file():
+                    shutil.copy2(txt, dataset_dir / 'labels' / side / txt.name)
+                counts[side] += 1
+    empty = [s for s, c in counts.items() if c == 0]
+    if empty:
+        raise ValueError(
+            f'划分后有侧为 0 张（train={counts["train"]}, val={counts["val"]}, '
+            f'test={counts["test"]}）——批次太少无法分层，再多采 1–2 个批次目录后重试')
+    write_data_yaml(dataset_dir, classes)
+    return counts
+
+
+def build_train_kwargs(data_yaml, epochs, batch, device, project):
+    """ultralytics YOLO.train 的关键字参数（在线增强 + 禁翻转）。"""
+    name = Path(data_yaml).parent.name.removesuffix('_dataset') or 'run'
+    kw = {'data': data_yaml, 'epochs': epochs, 'imgsz': 640, 'batch': batch,
+          'device': device, 'project': project, 'name': name}
+    kw.update(AUGMENT_PARAMS)
+    return kw
 
 
 def build_parser():
