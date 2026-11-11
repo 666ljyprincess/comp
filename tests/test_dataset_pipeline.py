@@ -114,3 +114,9 @@ def test_build_train_kwargs_merges_augment(tmp_path):
     assert kw['device'] == '0' and kw['epochs'] == 100
     assert kw['flipud'] == 0.0 and kw['fliplr'] == 0.0
     assert kw['imgsz'] == 640 and kw['batch'] == 16
+
+
+def test_weights_dest_path():
+    from dataset_pipeline import weights_dest
+    assert weights_dest('people') == os.path.expanduser('~/weights/people_best.pt')
+    assert weights_dest('trash', weights_root=str(Path('/tmp/w'))) == '/tmp/w/trash_best.pt'

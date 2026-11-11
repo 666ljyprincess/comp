@@ -149,6 +149,81 @@ def build_train_kwargs(data_yaml, epochs, batch, device, project):
     return kw
 
 
+def weights_dest(ds_type, weights_root='~/weights'):
+    """训练产物落位路径：~/weights/<type>_best.pt（比赛 launch 直接指这里）。"""
+    root = Path(os.path.expanduser(weights_root))
+    return str(root / f'{ds_type}_best.pt')
+
+
+def _batch_dirs(src_root, ds_type):
+    src_root = Path(os.path.expanduser(src_root))
+    dirs = []
+    for d in sorted(src_root.iterdir()):
+        if not d.is_dir() or not d.name.startswith(f'{ds_type}_'):
+            continue
+        if d.name == f'{ds_type}_dataset':
+            continue
+        if list(d.glob('*.jpg')):
+            dirs.append(d)
+    return dirs
+
+
+def cmd_label(args):
+    """预标注：用上一版模型给批次目录打框，txt 写在图旁（标注工具打开即校正）。"""
+    from ultralytics import YOLO  # 懒加载：纯逻辑环境无 ultralytics
+
+    model = YOLO(os.path.expanduser(args.model))
+    for d in _batch_dirs(args.src, args.type):
+        imgs = sorted(d.glob('*.jpg'))
+        n_boxes = 0
+        for img in imgs:
+            boxes = []
+            for r in model.predict(str(img), conf=args.conf, verbose=False):
+                xywhn = r.boxes.xywhn.cpu().tolist() if r.boxes is not None else []
+                clss = r.boxes.cls.cpu().tolist() if r.boxes is not None else []
+                boxes.extend((int(c), *xy) for c, xy in zip(clss, xywhn))
+            img.with_suffix('.txt').write_text(boxes_to_yolo_lines(boxes),
+                                               encoding='utf-8')
+            n_boxes += len(boxes)
+        print(f'[label] {d.name}: 检出 {n_boxes} 框 / {len(imgs)} 图（txt 已写在图旁，标注工具里校正）')
+    return 0
+
+
+def cmd_split(args):
+    classes = resolve_classes(args.type, args.classes)
+    counts = do_split(args.src, args.type, classes)
+    print(f'[split] train={counts["train"]} val={counts["val"]} test={counts["test"]} '
+          f'→ {os.path.expanduser(args.src)}/{args.type}_dataset/data.yaml')
+    return 0
+
+
+def cmd_train(args):
+    from ultralytics import YOLO  # 懒加载
+
+    src_root = Path(os.path.expanduser(args.src))
+    data_yaml = src_root / f'{args.type}_dataset' / 'data.yaml'
+    if not data_yaml.is_file():
+        print(f'[train] 缺 {data_yaml}——先跑 split（或直接 run）', file=sys.stderr)
+        return 1
+    project = str(src_root / f'{args.type}_training')
+    model = YOLO(args.pretrained)
+    model.train(**build_train_kwargs(str(data_yaml), args.epochs, args.batch,
+                                     args.device, project))
+    best = Path(model.trainer.best)
+    dest = weights_dest(args.type)
+    Path(dest).parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(best, dest)
+    print(f'[train] best.pt 已复制到 {dest}（比赛 launch 传 people_weights:=这个路径）')
+    return 0
+
+
+def cmd_run(args):
+    rc = cmd_split(args)
+    if rc != 0:
+        return rc
+    return cmd_train(args)
+
+
 def build_parser():
     ap = argparse.ArgumentParser(
         prog='dataset_pipeline.py',
@@ -189,7 +264,9 @@ def main(argv=None):
     if not args.command:
         build_parser().print_help()
         return 0
-    return 0
+    handlers = {'label': cmd_label, 'split': cmd_split,
+                'train': cmd_train, 'run': cmd_run}
+    return handlers[args.command](args)
 
 
 if __name__ == '__main__':
