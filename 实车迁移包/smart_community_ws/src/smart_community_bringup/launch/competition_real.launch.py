@@ -96,7 +96,7 @@ def generate_launch_description():
             default_value=os.path.join(get_package_share_directory('smart_community_mission'),
                                        'config', 'waypoints_cruise.yaml'),
             description='巡航/任务航点 yaml 绝对路径；巡航版=全部 turn，任务版=识别任务点'),
-        DeclareLaunchArgument('map', default_value='/userdata/maps/community_real.yaml'),
+        DeclareLaunchArgument('map', default_value=os.path.expanduser('~/maps/community_real.yaml')),
         # 1. 实车 URDF 静态 TF（base_link→雷达/相机）
         IncludeLaunchDescription(PythonLaunchDescriptionSource(desc)),
         # 2. odom→base_link TF（桥来 /odom，替代车端 TF；车端驱动按计划.md §1.5 自起）
