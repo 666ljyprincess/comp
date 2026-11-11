@@ -6,6 +6,10 @@
   <maintainer email="team@example.com">Smart Community Team</maintainer>
   <license>MIT</license>
   <buildtool_depend>ament_cmake</buildtool_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>smart_community_gazebo</exec_depend>
   <exec_depend>smart_community_navigation</exec_depend>
   <exec_depend>smart_community_slam</exec_depend>

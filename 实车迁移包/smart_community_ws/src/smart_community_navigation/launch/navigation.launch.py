@@ -1,7 +1,7 @@
 """Nav2 bringup（实车版）。
 
 - use_sim_time 恒为 false
-- map 作为 launch 参数传入（实车地图 /userdata/maps/community_real.yaml）
+- map 作为 launch 参数传入（实车地图 ~/maps/community_real.yaml，PC 端）
 - use_keepout 默认 false：纯巡航阶段不开禁行层，跑顺后再开（需要实车 lane_keepout 地图）
 """
 import os
@@ -57,7 +57,7 @@ def _launch_nav(context):
 
 def generate_launch_description():
     return LaunchDescription([
-        DeclareLaunchArgument('map', default_value='/userdata/maps/community_real.yaml',
+        DeclareLaunchArgument('map', default_value=os.path.expanduser('~/maps/community_real.yaml'),
                               description='实车地图 yaml 路径'),
         DeclareLaunchArgument('use_keepout', default_value='false'),
         OpaqueFunction(function=_launch_nav)

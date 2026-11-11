@@ -8,9 +8,10 @@
       ros2 launch smart_community_bringup competition_real.launch.py
   ③ 纯巡航丝滑测试（无识别任务！所有点位只停不走任务）：
       ros2 launch smart_community_bringup competition_real.launch.py start_mission:=true waypoints:=<巡航yaml绝对路径>
-  ④ 全任务（识别开启，weights 指向实车训练模型；hfov/地标用实测值）：
+  ④ 全任务（识别开启，weights 指向 PC 本地训练模型，~ 会自动展开；hfov/地标用实测值）：
       ros2 launch smart_community_bringup competition_real.launch.py start_mission:=true \
-          use_perception:=true people_weights:=/userdata/smart_community_ws/weights/people_best.pt \
+          use_perception:=true people_weights:=~/weights/people_best.pt \
+          map:=~/maps/community_real.yaml \
           people_hfov:=<§2.3实测弧度> people_landmarks:=<§5.3重测yaml绝对路径>
 
 关键差异（相对仿真 competition.launch.py）：
@@ -76,6 +77,8 @@ def generate_launch_description():
                               description='建图模式（此时应关导航）'),
         DeclareLaunchArgument('start_mission', default_value='false'),
         DeclareLaunchArgument('use_perception', default_value='false'),
+        DeclareLaunchArgument('people_weights', default_value='',
+                              description='Trained 2-class YOLO .pt（PC 本地路径，~ 可用）；空=无模型，people 检测报 MODEL_MISSING'),
         DeclareLaunchArgument('use_keepout', default_value='false'),
         DeclareLaunchArgument('navigation_mode', default_value='continuous'),
         DeclareLaunchArgument('image_topic', default_value='/image_raw'),

@@ -10,7 +10,18 @@ from importlib.machinery import SourceFileLoader
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 SCRIPT = Path(__file__).resolve().parents[1] / 'scripts' / 'odom_tf_broadcaster'
+
+
+@pytest.fixture(autouse=True)
+def _restore_sys_modules():
+    """测试后恢复 sys.modules——stub 不许泄漏污染同进程其它测试模块。"""
+    saved = dict(sys.modules)
+    yield
+    sys.modules.clear()
+    sys.modules.update(saved)
 
 
 class _Param:

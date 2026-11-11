@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-智慧社区 YOLO 数据集采集脚本（在小车板端运行）
+智慧社区 YOLO 数据集采集脚本（方案 A：在 PC 端运行，经桥取图）
 
 功能：
   1. 终端菜单选择要采集的数据集类型（people/trash/fire/plate/ebike/sign/meter/自定义）
-  2. 自动创建板端保存目录 /userdata/datasets/<类型_日期序号>/
+  2. 自动创建 PC 保存目录 ~/datasets/<类型_日期序号>/
   3. 小车移动过程中自动存图（默认每 0.8s 一张，菜单可改）
   4. 达到目标张数后提示用户并停止采集
-  5. Ctrl+C 退出时自动 scp（带 -O）到 PC 端指定目录，失败则打印手动命令
+  5. Ctrl+C 退出时的 scp 传输步骤可直接回车跳过（数据本就存在 PC 本地）
 
-板端依赖（三选一，按实际情况）：
+PC 端依赖（三选一，按实际情况）：
   pip3 install cv-python   # 或 apt 装的 python3-opencv（import cv2）
   pip3 install pillow      # 无 cv2 时用 PIL + 手动 jpg 编码
   实在都没有时会提示安装命令
 
-用法（板端，先启动相机驱动）：
+用法（PC 端；车端驱动 + 桥 + 压缩转 raw 已起）：
   python3 dataset_capture.py
 """
 
@@ -28,7 +28,7 @@ from datetime import datetime
 
 # ---------------- 配置区（按需修改） ----------------
 IMAGE_TOPIC = "/image_raw"          # 相机话题（用 ros2 topic list 确认）
-SAVE_ROOT = "/userdata/datasets"    # 板端保存根目录
+SAVE_ROOT = os.path.expanduser("~/datasets")    # PC 保存根目录（方案 A：脚本在 PC 跑）
 DEFAULT_INTERVAL = 0.8              # 存图间隔秒
 DEFAULT_PC_USER = "horizon"         # PC 端 ssh 用户名（改你自己）
 DEFAULT_PC_IP = "192.168.1.20"      # PC 端 IP（改你自己）
@@ -107,7 +107,7 @@ def save_image_factory():
         print("[存储引擎] Pillow")
         return pil_save
     except ImportError:
-        print("[错误] 板端没有 cv2 也没有 PIL，先安装其一：")
+        print("[错误] 本机没有 cv2 也没有 PIL，先安装其一：")
         print("  pip3 install --index-url https://pypi.tuna.tsinghua.edu.cn/simple pillow")
         sys.exit(1)
 
@@ -116,7 +116,7 @@ def scp_to_pc(save_dir, pc_user, pc_ip, pc_dir):
     dst = f"{pc_user}@{pc_ip}:{pc_dir}/"
     print(f"\n[传输] scp -O -r {save_dir} {dst}")
     if shutil.which("scp") is None:
-        print("[错误] 板端没有 scp 命令，请手动复制")
+        print("[错误] 本机没有 scp 命令，请手动复制")
         return False
     cmd = ["scp", "-O", "-r", save_dir, dst]
     try:
